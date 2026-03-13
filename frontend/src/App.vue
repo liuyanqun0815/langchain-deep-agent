@@ -29,10 +29,10 @@ import { NConfigProvider, NMessageProvider } from "naive-ui";
 
 const themeOverrides = {
   common: {
-    primaryColor: "#22d3ee",
-    primaryColorHover: "#67e8f9",
-    primaryColorPressed: "#06b6d4",
-    primaryColorSuppl: "#22d3ee",
+    primaryColor: "#0ea5e9",
+    primaryColorHover: "#38bdf8",
+    primaryColorPressed: "#0284c7",
+    primaryColorSuppl: "#0ea5e9",
   },
 };
 </script>
@@ -50,21 +50,18 @@ const themeOverrides = {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1.5rem;
+  padding: 0.65rem 1.5rem;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   background: var(--bg-surface);
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.9);
 }
 
 .app-title {
-  font-family: "JetBrains Mono", "SF Mono", monospace;
-  font-size: 1.25rem;
+  font-size: 1.15rem;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   color: var(--accent);
   margin: 0;
-  text-shadow: 0 0 24px rgba(34, 211, 238, 0.4);
 }
 
 .app-nav {
@@ -80,13 +77,15 @@ const themeOverrides = {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   padding-bottom: 2px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
   transition: color 0.18s ease, border-color 0.18s ease;
 }
 
 .nav-link:hover,
 .nav-link.router-link-active {
   color: var(--accent);
-  border-bottom: 2px solid var(--accent);
+  border-bottom-color: var(--accent);
 }
 
 .app-main {

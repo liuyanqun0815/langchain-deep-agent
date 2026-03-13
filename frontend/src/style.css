@@ -1,17 +1,18 @@
-/* 科技感主题：深色基底 + 青色/蓝高亮 */
+/* 简约风：浅色基底 */
 :root {
-  --bg-base: #06080d;
-  --bg-surface: #0c1018;
-  --bg-elevated: #111820;
-  --text-primary: #e2e8f0;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
-  --border: #1e293b;
-  --accent: #22d3ee;
-  --accent-soft: rgba(34, 211, 238, 0.12);
-  --accent-dim: rgba(34, 211, 238, 0.16);
-  --glow: 0 0 28px rgba(34, 211, 238, 0.18);
-  font-family: "JetBrains Mono", "SF Mono", "Consolas", ui-monospace, monospace;
+  --bg-base: #f8f9fa;
+  --bg-surface: #ffffff;
+  --bg-elevated: #ffffff;
+  --text-primary: #1a1a1a;
+  --text-secondary: #525252;
+  --text-muted: #737373;
+  --border: #e5e5e5;
+  --accent: #0ea5e9;
+  --accent-hover: #38bdf8;
+  --accent-soft: rgba(14, 165, 233, 0.08);
+  --accent-dim: rgba(14, 165, 233, 0.15);
+  --glow: none;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif;
   line-height: 1.5;
   color: var(--text-primary);
   background-color: var(--bg-base);
@@ -30,8 +31,8 @@ body {
 }
 
 body {
-  overflow: hidden; /* 锁定整页高度，只滚动中间内容区域 */
-  background-image: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(34, 211, 238, 0.08), transparent);
+  overflow: hidden;
+  background-color: var(--bg-base);
 }
 
 #app {

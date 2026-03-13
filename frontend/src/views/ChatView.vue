@@ -9,26 +9,36 @@
         </div>
       </div>
       <n-scrollbar class="session-scroll">
-        <n-list hoverable clickable>
-          <n-list-item
+        <div class="session-list" role="list">
+          <div
             v-for="s in chatStore.sessionList"
             :key="s.id"
-            :class="{ active: s.id === chatStore.currentSessionId }"
+            :class="['session-item', { active: s.id === chatStore.currentSessionId }]"
+            role="listitem"
             @click="onSelectSession(s.id)"
           >
-            <n-thing>
-              <template #header>{{ s.title || "新会话" }}</template>
-              <template #header-extra>
-                <n-text depth="3" style="font-size: 12px">
-                  {{ formatTime(s.updated_at) }}
-                </n-text>
-              </template>
-            </n-thing>
-            <template #suffix>
-              <n-button quaternary size="tiny" type="error" @click.stop="onDeleteSession(s.id)">删</n-button>
-            </template>
-          </n-list-item>
-        </n-list>
+            <div class="session-item-main">
+              <n-tooltip trigger="hover" :delay="300">
+                <template #trigger>
+                  <span class="session-item-title">{{ s.title || "新会话" }}</span>
+                </template>
+                {{ s.title || "新会话" }}
+              </n-tooltip>
+              <div class="session-item-meta">
+                <span class="session-item-time">{{ formatTime(s.updated_at) }}</span>
+                <n-button
+                  quaternary
+                  size="tiny"
+                  type="error"
+                  class="session-item-delete"
+                  @click.stop="onDeleteSession(s.id)"
+                >
+                  删
+                </n-button>
+              </div>
+            </div>
+          </div>
+        </div>
       </n-scrollbar>
     </aside>
     <section class="chat-main">
@@ -85,12 +95,8 @@
                 @change="onFilesChange"
               />
               <n-button quaternary size="small" @click="triggerFileSelect">上传文件</n-button>
-              <span
-                v-for="(f, i) in selectedFiles"
-                :key="i"
-                class="file-pill"
-              >
-                {{ f.name }}
+              <span v-for="(f, i) in selectedFiles" :key="i" class="file-pill">
+                <span class="file-pill-name">{{ f.name }}</span>
                 <span class="file-pill-remove" @click.stop="removeFile(i)">×</span>
               </span>
             </div>
@@ -103,15 +109,24 @@
                 :disabled="sending"
                 @keydown.enter.exact.prevent="send"
               />
-              <n-button type="primary" :loading="sending" :disabled="!inputText.trim()" @click="send" class="send-btn">
-                发送
-              </n-button>
+              <button
+                type="button"
+                class="send-btn"
+                :disabled="sending || !inputText.trim()"
+                @click="send"
+              >
+                {{ sending ? "发送中…" : "发送" }}
+              </button>
             </div>
           </div>
         </div>
       </template>
       <div v-else class="chat-empty">
-        <p>选择左侧会话或点击「新建」开始对话</p>
+        <div class="chat-empty-inner">
+          <div class="chat-empty-icon">💬</div>
+          <p class="chat-empty-text">选择左侧会话或点击「新建」开始对话</p>
+          <p class="chat-empty-hint">在左侧边栏管理历史会话</p>
+        </div>
       </div>
     </section>
   </div>
@@ -119,7 +134,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, nextTick, watch, computed } from "vue";
-import { NButton, NScrollbar, NList, NListItem, NThing, NText, NInput } from "naive-ui";
+import { NButton, NScrollbar, NInput, NTooltip } from "naive-ui";
 import { useChatStore } from "../stores/chat";
 import { sessionsApi } from "../api";
 import type { MessageOut } from "../api";
@@ -353,6 +368,7 @@ onMounted(() => {
 <style scoped>
 .chat-view {
   display: flex;
+  flex-direction: row;
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -392,14 +408,14 @@ onMounted(() => {
 }
 
 .session-header-actions :deep(.n-button--primary-type) {
-  background: rgba(34, 211, 238, 0.16);
+  background: var(--accent-dim);
   color: var(--accent);
   box-shadow: none;
 }
 
 .session-header-actions :deep(.n-button--error-type) {
   background: rgba(239, 68, 68, 0.08);
-  color: #fca5a5;
+  color: #dc2626;
   box-shadow: none;
 }
 
@@ -408,12 +424,70 @@ onMounted(() => {
   min-height: 0;
 }
 
-.session-scroll :deep(.n-list-item) {
-  cursor: pointer;
+.session-list {
+  padding: 8px 0;
 }
-.session-scroll :deep(.n-list-item.active) {
-  background: rgba(15, 23, 42, 0.85);
-  border-left: 2px solid var(--accent);
+
+.session-item {
+  display: flex;
+  align-items: stretch;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  border-left: 2px solid transparent;
+}
+
+.session-item:hover {
+  background: var(--bg-base);
+}
+
+.session-item.active {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+}
+
+.session-item-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.session-item-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.session-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.session-item-time {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.session-item-delete {
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+
+.session-item:hover .session-item-delete {
+  opacity: 1;
+}
+
+.session-item-delete :deep(.n-button__content) {
+  font-size: 11px;
+  padding: 0 6px;
 }
 
 .chat-main {
@@ -423,21 +497,24 @@ onMounted(() => {
   min-width: 0;
   min-height: 0;
   background: var(--bg-base);
-  /* 限制中间对话区域的最大宽度，让输入与输出更集中 */
-  align-items: center; /* 对话内容与输入框整体居中 */
-  padding-right: 150px; /* 轻微向左偏移，避免太贴近右侧栏 */
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 140px 0 20px; /* 右侧 80px，整体向左移 40px */
 }
 
 .chat-messages {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 8px 12px 0;
+  padding: 12px 16px 12px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  width: 750px;
-  max-width: 750px; /* 收窄对话宽度，靠近输入框 */
+  justify-content: flex-start;
+  gap: 16px;
+  width: 100%;
+  max-width: 720px;
+  scroll-behavior: smooth;
+  background: var(--bg-base);
 }
 
 .message-row {
@@ -459,14 +536,14 @@ onMounted(() => {
 
 .message-bubble {
   max-width: 78%;
-  padding: 8px 12px;
-  border-radius: 8px;
+  padding: 12px 14px;
+  border-radius: 10px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 .message-row.assistant .message-bubble {
-  border-color: rgba(34, 211, 238, 0.35);
-  box-shadow: 0 0 12px rgba(34, 211, 238, 0.06);
+  border-color: var(--accent-dim);
 }
 .message-meta {
   display: flex;
@@ -506,21 +583,19 @@ onMounted(() => {
   flex-shrink: 0;
   border-top: 1px solid var(--border);
   background: var(--bg-surface);
-  /* 使输入框与消息区域距离更紧凑 */
-  padding-top: 2px;
   width: 100%;
   display: flex;
   justify-content: center;
 }
 
 .chat-input-wrap {
-  padding: 6px 12px 8px;
+  padding: 12px 16px 12px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
   align-items: stretch;
-  width: 750px;
-  max-width: 750px; /* 与消息区域同宽，输入/输出更贴近 */
+  width: 100%;
+  max-width: 720px;
 }
 .chat-input-wrap :deep(.n-input) {
   width: 100%;
@@ -535,26 +610,6 @@ onMounted(() => {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-dim);
 }
-.send-btn {
-  flex-shrink: 0;
-  background: var(--accent) !important;
-  color: #020617 !important;
-  border: none;
-  box-shadow: 0 0 12px rgba(15, 23, 42, 0.9);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 12px;
-  transition: background-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.send-btn:hover {
-  background-color: #38e0f4 !important;
-  box-shadow: 0 0 14px rgba(34, 211, 238, 0.6);
-}
-
-.send-btn:active {
-  box-shadow: 0 0 8px rgba(15, 23, 42, 0.9);
-}
 
 .input-row {
   display: flex;
@@ -562,9 +617,39 @@ onMounted(() => {
   gap: 12px;
 }
 
+.input-row :deep(.n-input) {
+  flex: 1;
+  min-width: 0;
+}
+
+.send-btn {
+  flex-shrink: 0;
+  min-height: 36px;
+  min-width: 80px;
+  padding: 0 24px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  white-space: nowrap;
+  overflow: visible;
+}
+.send-btn:hover:not(:disabled) {
+  background-color: var(--accent-hover);
+}
+.send-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .upload-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -574,8 +659,7 @@ onMounted(() => {
   font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  box-shadow: none;
+  border: 1px solid var(--border);
 }
 
 .file-input-hidden {
@@ -583,34 +667,66 @@ onMounted(() => {
 }
 
 .file-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 12px;
-  padding: 2px 10px;
+  padding: 4px 10px;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.8);
-  background: rgba(15, 23, 42, 0.2);
+  border: 1px solid var(--border);
+  background: var(--accent-soft);
   color: var(--text-primary);
+  max-width: 160px;
+}
+
+.file-pill-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .file-pill-remove {
-  margin-left: 4px;
+  flex-shrink: 0;
   cursor: pointer;
+  opacity: 0.8;
+}
+.file-pill-remove:hover {
+  opacity: 1;
 }
 
 .inference-inline {
-  margin-top: 2px;
+  margin-top: 8px;
   width: 100%;
   font-size: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  overflow: hidden;
 }
 
 .inference-inline-header {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   cursor: pointer;
+  padding: 8px 12px;
   color: var(--text-muted);
+  transition: background 0.15s ease;
+}
+
+.inference-inline-header:hover {
+  background: var(--bg-base);
 }
 
 .inference-toggle {
   font-size: 11px;
+  color: var(--accent);
+}
+
+.inference-inline-content {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
 }
 
 .inference-box {
@@ -659,7 +775,7 @@ onMounted(() => {
   padding: 8px 10px;
   border-radius: 4px;
   border-left: 3px solid var(--border);
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--accent-soft);
 }
 .inference-item.thinking {
   border-left-color: var(--accent);
@@ -696,7 +812,30 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  min-height: 200px;
+}
+
+.chat-empty-inner {
+  text-align: center;
+  padding: 32px 24px;
+}
+
+.chat-empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.6;
+}
+
+.chat-empty-text {
+  color: var(--text-secondary);
+  font-size: 15px;
+  font-weight: 500;
+  margin: 0 0 8px;
+}
+
+.chat-empty-hint {
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: 13px;
+  margin: 0;
 }
 </style>

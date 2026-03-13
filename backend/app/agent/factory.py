@@ -48,6 +48,7 @@ def _make_backend(runtime: Any) -> CompositeBackend:
     # LocalShellBackend：支持 execute 执行本地 shell，root_dir=backend 目录
     # 注意：仅用于本地开发，生产环境需使用沙箱（BaseSandbox）或 HITL 审批
     backend_root = Path(__file__).resolve().parent.parent.parent
+    logger.info("LocalShellBackend enabled: %s", backend_root)
     local_shell = LocalShellBackend(
         root_dir=backend_root,
         inherit_env=True,
