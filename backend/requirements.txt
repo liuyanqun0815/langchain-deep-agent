@@ -25,3 +25,4 @@ pdfplumber>=0.11.0
 
 # 技能 manifest 解析
 pyyaml>=6.0
+python-multipart
