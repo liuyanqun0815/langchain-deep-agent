@@ -1,0 +1,39 @@
+/* 科技感主题：深色基底 + 青色/蓝高亮 */
+:root {
+  --bg-base: #06080d;
+  --bg-surface: #0c1018;
+  --bg-elevated: #111820;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --border: #1e293b;
+  --accent: #22d3ee;
+  --accent-soft: rgba(34, 211, 238, 0.12);
+  --accent-dim: rgba(34, 211, 238, 0.16);
+  --glow: 0 0 28px rgba(34, 211, 238, 0.18);
+  font-family: "JetBrains Mono", "SF Mono", "Consolas", ui-monospace, monospace;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background-color: var(--bg-base);
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  overflow: hidden; /* 锁定整页高度，只滚动中间内容区域 */
+  background-image: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(34, 211, 238, 0.08), transparent);
+}
+
+#app {
+  height: 100%;
+}
