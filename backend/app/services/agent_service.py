@@ -4,6 +4,7 @@ import json
 import logging
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Iterator
 
 from sqlmodel import Session
@@ -334,27 +335,29 @@ def chat_with_files(
     """
     if files_info:
         # 使用虚拟路径 /uploads/session_X/文件名，匹配 CompositeBackend 的 /uploads/ 路由
-        # 避免 /data/uploads/ 或 data/uploads/ 在 Windows 下被错误解析
+        # 物理路径使用绝对路径，便于 execute 执行时正确读取
+        backend_root = Path(__file__).resolve().parent.parent.parent
+        uploads_root = backend_root / "data" / "uploads"
         entries: list[str] = []
         for info in files_info:
             name = info.get("name")
             path = info.get("path")
             if not name or not path:
                 continue
-            # 从 data/uploads/session_X/file 提取 session_X/file，拼接为 /uploads/session_X/file
             normalized = path.replace("\\", "/")
             if "uploads/" in normalized:
                 suffix = normalized.split("uploads/", 1)[-1]
             else:
                 suffix = normalized
             virtual_path = f"/uploads/{suffix}"
-            physical_path = f"data/uploads/{suffix}"
-            entries.append(f"{name} -> 虚拟路径: {virtual_path} | 物理路径(execute用): {physical_path}")
+            # execute 使用绝对路径，避免相对路径在 shell 中解析错误
+            physical_path = str((uploads_root / suffix).resolve())
+            entries.append(f"{name} -> 虚拟路径: {virtual_path} | 绝对路径(execute用): {physical_path}")
         files_text = "\n".join(entries)
         extra_hint = (
             "\n\n[已上传文件列表]\n"
             f"{files_text}\n"
-            "路径说明：read_file/read_pdf 用虚拟路径；execute 执行 Python 时用物理路径。\n"
+            "路径说明：read_file/read_pdf 用虚拟路径；execute 执行时用绝对路径。\n"
         )
         augmented = f"{user_message}{extra_hint}"
     else:
