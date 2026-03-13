@@ -334,8 +334,7 @@ def chat_with_files(
     - 其他逻辑复用 chat。
     """
     if files_info:
-        # 使用虚拟路径 /uploads/session_X/文件名，匹配 CompositeBackend 的 /uploads/ 路由
-        # 物理路径使用绝对路径，便于 execute 执行时正确读取
+        # 统一使用绝对路径，便于 read_file / execute / 技能 正确读取
         backend_root = Path(__file__).resolve().parent.parent.parent
         uploads_root = backend_root / "data" / "uploads"
         entries: list[str] = []
@@ -349,15 +348,13 @@ def chat_with_files(
                 suffix = normalized.split("uploads/", 1)[-1]
             else:
                 suffix = normalized
-            virtual_path = f"/uploads/{suffix}"
-            # execute 使用绝对路径，避免相对路径在 shell 中解析错误
-            physical_path = str((uploads_root / suffix).resolve())
-            entries.append(f"{name} -> 虚拟路径: {virtual_path} | 绝对路径(execute用): {physical_path}")
+            abs_path = str((uploads_root / suffix).resolve())
+            entries.append(f"{name} -> {abs_path}")
         files_text = "\n".join(entries)
         extra_hint = (
             "\n\n[已上传文件列表]\n"
             f"{files_text}\n"
-            "路径说明：read_file/read_pdf 用虚拟路径；execute 执行时用绝对路径。\n"
+            "路径说明：读纯文本用 read_file + 上述绝对路径；其他文件（PDF、Word 等）优先使用技能；execute 执行时用绝对路径。不要使用虚拟路径。\n"
         )
         augmented = f"{user_message}{extra_hint}"
     else:
