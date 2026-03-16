@@ -89,6 +89,13 @@
                     </template>
                     <template v-else>{{ m.content }}</template>
                   </div>
+                  <!-- 用户消息：在文本下方展示上传的附件 -->
+                  <div v-if="m.role === 'user' && m.attached_files?.length" class="attached-files">
+                    <div v-for="(f, fi) in m.attached_files" :key="fi" class="attached-file-item">
+                      <span class="attached-file-icon">📎</span>
+                      <span class="attached-file-name">{{ f.name }}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -160,6 +167,8 @@ type UiMessage = MessageOut & {
   inferenceCollapsed?: boolean;
   /** 推理耗时（秒），从首条消息到 end 的时长，用于展示「推理中(用时X秒)」 */
   inferenceDurationSec?: number;
+  /** 用户上传的附件（文件名），展示在文本内容下方 */
+  attached_files?: { name: string }[];
 };
 
 const chatStore = useChatStore();
@@ -325,19 +334,20 @@ async function send() {
   });
 
   // 先在前端展示用户消息（本地乐观更新）
+  const files = selectedFiles.value.length > 0 ? [...selectedFiles.value] : undefined;
   const userMsg: UiMessage = {
     id: Date.now(),
     session_id: sessionId,
     role: "user",
     content: text,
     created_at: new Date().toISOString(),
+    attached_files: files?.map((f) => ({ name: f.name })),
   };
 
   chatStore.appendMessage(userMsg as unknown as MessageOut);
   inputText.value = "";
   sending.value = true;
   try {
-    const files = selectedFiles.value.length > 0 ? [...selectedFiles.value] : undefined;
     selectedFiles.value = [];
 
     // 统一走流式接口：无文件用 /messages/stream，有文件用 /messages/upload/stream
@@ -773,6 +783,72 @@ onMounted(() => {
   margin-bottom: 10px;
   padding-bottom: 6px;
   border-bottom: 1px solid var(--border);
+}
+
+/* 用户消息附件：挂载在文本内容下方 */
+.attached-files {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.attached-file-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+
+.attached-file-icon {
+  opacity: 0.8;
+}
+
+.attached-file-name {
+  color: var(--text-secondary);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 用户消息附件列表（挂在文本下方） */
+.attached-files {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.attached-file-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.attached-file-icon {
+  opacity: 0.8;
+}
+
+.attached-file-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .result-box .message-body {
