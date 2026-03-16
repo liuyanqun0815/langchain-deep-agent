@@ -121,7 +121,7 @@ async def send_message_with_files(
     files: List[UploadFile] = File(default_factory=list),
     db: Session = Depends(get_session),
 ) -> SendMessageResponse:
-    """支持文件上传的对话接口：文本 + 多文件。"""
+    """支持文件上传的对话接口（非流式，保留供兼容）：文本 + 多文件。"""
     s = session_service.get_session_by_id(db, session_id)
     if s is None:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -136,6 +136,26 @@ async def send_message_with_files(
         created_at=created_at,
         inference_steps=inference_steps,
     )
+
+
+@router.post("/{session_id}/messages/upload/stream")
+async def send_message_with_files_stream(
+    session_id: int,
+    user_message: str = Form(...),
+    files: List[UploadFile] = File(default_factory=list),
+    db: Session = Depends(get_session),
+):
+    """
+    带文件上传的流式对话接口：
+    - 先保存上传文件，再调用 chat_stream_with_files；
+    - 使用 SSE 流式推送推理步骤与最终答案，与 /messages/stream 事件格式一致。
+    """
+    s = session_service.get_session_by_id(db, session_id)
+    if s is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    files_info = await _save_uploaded_files(session_id, files)
+    generator = agent_service.chat_stream_with_files(db, session_id, user_message, files_info)
+    return StreamingResponse(generator, media_type="text/event-stream")
 
 
 @router.delete("/{session_id}", status_code=204)

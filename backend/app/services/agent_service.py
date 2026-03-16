@@ -71,6 +71,26 @@ def _ai_message_reasoning_content(msg: Any) -> str:
     return ""
 
 
+def _message_to_inference_steps(msg: Any) -> list[InferenceStep]:
+    """从单条 message 中提取推理步骤（用于流式推送）。"""
+    steps: list[InferenceStep] = []
+    msg_type = getattr(msg, "type", "") or getattr(msg, "__class__", type(msg)).__name__
+    if msg_type == "ai" or "AIMessage" in str(type(msg).__name__):
+        reasoning = _ai_message_reasoning_content(msg)
+        if reasoning:
+            steps.append(InferenceStep(kind="thinking", content=reasoning[:_MAX_LOG_STEP_CONTENT * 2]))
+        tool_calls = getattr(msg, "tool_calls", None) or []
+        for tc in tool_calls:
+            name = tc.get("name", "tool") if isinstance(tc, dict) else getattr(tc, "name", "tool")
+            args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
+            steps.append(InferenceStep(kind="tool_call", name=name, content=str(args)[:300]))
+    if msg_type == "tool" or "ToolMessage" in str(type(msg).__name__):
+        name = getattr(msg, "name", "tool")
+        content = getattr(msg, "content", None) or ""
+        steps.append(InferenceStep(kind="tool_result", name=name, content=str(content)[:500]))
+    return steps
+
+
 def _extract_inference_steps(result_messages: list[Any]) -> list[InferenceStep]:
     """从 Agent 返回的 messages 中提取思考、工具调用与结果，供推理框展示。"""
     steps: list[InferenceStep] = []
@@ -250,6 +270,7 @@ def chat_stream(
             session_id,
             messages_for_agent,
         )
+        seen_step_keys: set[tuple[str, str | None, str]] = set()
         for event in agent.stream(
             {"messages": messages_for_agent},
             config=config,
@@ -266,17 +287,31 @@ def chat_stream(
                     continue
             else:
                 continue
-            delta = _ai_message_final_content(msg)
-            if not delta:
-                continue
-            assistant_content += delta
-            yield _sse_event(
-                {
-                    "event": "chunk",
-                    "delta": delta,
-                    "content": assistant_content,
-                }
-            )
+
+            # 1. 流式推送推理步骤（思考、工具调用、工具结果）
+            for step in _message_to_inference_steps(msg):
+                key = (step.kind, step.name, (step.content or "")[:80])
+                if key not in seen_step_keys:
+                    seen_step_keys.add(key)
+                    yield _sse_event({"event": "inference_step", "step": step.model_dump()})
+
+            # 2. 流式推送最终答案内容（仅在 AIMessage 有 content 且非 reasoning 时）
+            new_content = _ai_message_final_content(msg)
+            if new_content and not _ai_message_reasoning_content(msg):
+                # 兼容两种模式：增量 delta 或累积 full content
+                if new_content.startswith(assistant_content):
+                    delta = new_content[len(assistant_content) :]
+                else:
+                    delta = new_content
+                assistant_content = new_content
+                if delta:
+                    yield _sse_event(
+                    {
+                        "event": "chunk",
+                        "delta": delta,
+                        "content": assistant_content,
+                    }
+                )
 
         # 流结束后获取最终状态，用于 inference_steps
         try:
@@ -339,6 +374,34 @@ def chat_stream(
     )
 
 
+def _augment_message_with_files(user_message: str, files_info: list[dict[str, Any]]) -> str:
+    """将文件名与物理路径注入 user_message，供 chat_with_files / chat_stream_with_files 复用。"""
+    if not files_info:
+        return user_message
+    backend_root = Path(__file__).resolve().parent.parent.parent
+    uploads_root = backend_root / "data" / "uploads"
+    entries: list[str] = []
+    for info in files_info:
+        name = info.get("name")
+        path = info.get("path")
+        if not name or not path:
+            continue
+        normalized = path.replace("\\", "/")
+        if "uploads/" in normalized:
+            suffix = normalized.split("uploads/", 1)[-1]
+        else:
+            suffix = normalized
+        abs_path = str((uploads_root / suffix).resolve())
+        entries.append(f"{name} -> {abs_path}")
+    files_text = "\n".join(entries)
+    extra_hint = (
+        "\n\n[已上传文件列表]\n"
+        f"{files_text}\n"
+        "路径说明：读纯文本用 read_file + 上述绝对路径；其他文件（PDF、Word 等）优先使用技能；execute 执行时用绝对路径。不要使用虚拟路径。\n"
+    )
+    return f"{user_message}{extra_hint}"
+
+
 def chat_with_files(
     db: Session,
     session_id: int,
@@ -346,34 +409,22 @@ def chat_with_files(
     files_info: list[dict[str, Any]],
 ) -> tuple[str, int, datetime, list[InferenceStep]]:
     """
-    带文件信息的对话入口：
-    - 将「文件名 + 物理路径」显式注入到本轮 user_message 中，方便大模型精确引用；
-    - 其他逻辑复用 chat。
+    带文件信息的对话入口（非流式）：
+    - 将「文件名 + 物理路径」显式注入到本轮 user_message 中；
+    - 复用 chat。
     """
-    if files_info:
-        # 统一使用绝对路径，便于 read_file / execute / 技能 正确读取
-        backend_root = Path(__file__).resolve().parent.parent.parent
-        uploads_root = backend_root / "data" / "uploads"
-        entries: list[str] = []
-        for info in files_info:
-            name = info.get("name")
-            path = info.get("path")
-            if not name or not path:
-                continue
-            normalized = path.replace("\\", "/")
-            if "uploads/" in normalized:
-                suffix = normalized.split("uploads/", 1)[-1]
-            else:
-                suffix = normalized
-            abs_path = str((uploads_root / suffix).resolve())
-            entries.append(f"{name} -> {abs_path}")
-        files_text = "\n".join(entries)
-        extra_hint = (
-            "\n\n[已上传文件列表]\n"
-            f"{files_text}\n"
-            "路径说明：读纯文本用 read_file + 上述绝对路径；其他文件（PDF、Word 等）优先使用技能；execute 执行时用绝对路径。不要使用虚拟路径。\n"
-        )
-        augmented = f"{user_message}{extra_hint}"
-    else:
-        augmented = user_message
+    augmented = _augment_message_with_files(user_message, files_info)
     return chat(db, session_id, augmented)
+
+
+def chat_stream_with_files(
+    db: Session,
+    session_id: int,
+    user_message: str,
+    files_info: list[dict[str, Any]],
+) -> Iterator[str]:
+    """
+    带文件信息的流式对话：注入文件路径后，复用 chat_stream 进行流式输出。
+    """
+    augmented = _augment_message_with_files(user_message, files_info)
+    yield from chat_stream(db, session_id, augmented)

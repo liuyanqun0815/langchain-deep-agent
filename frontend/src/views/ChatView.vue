@@ -194,17 +194,30 @@ function onSelectSession(id: number) {
 async function streamAssistantReply(
   sessionId: number,
   userMessage: string,
-  assistantMsg: UiMessage
+  assistantMsg: UiMessage,
+  files?: File[]
 ) {
   const controller = new AbortController();
   streamingController.value = controller;
   streamingMessageId.value = assistantMsg.id;
   streamingContent.value = "";
   try {
-    const resp = await fetch(`/api/sessions/${sessionId}/messages/stream`, {
+    const url = files?.length
+      ? `/api/sessions/${sessionId}/messages/upload/stream`
+      : `/api/sessions/${sessionId}/messages/stream`;
+    const body = files?.length
+      ? (() => {
+          const form = new FormData();
+          form.append("user_message", userMessage);
+          files.forEach((f) => form.append("files", f));
+          return form;
+        })()
+      : JSON.stringify({ user_message: userMessage });
+    const headers: Record<string, string> = files?.length ? {} : { "Content-Type": "application/json" };
+    const resp = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_message: userMessage }),
+      headers,
+      body,
       signal: controller.signal,
     });
     if (!resp.ok) throw new Error(`请求失败: ${resp.status}`);
@@ -225,14 +238,20 @@ async function streamAssistantReply(
         if (!dataLine) continue;
         const jsonStr = dataLine.slice(5).trim();
         if (!jsonStr) continue;
-        let payload: { event?: string; delta?: string; content?: string; message_id?: number; created_at?: string; inference_steps?: InferenceStep[]; message?: string };
+        let payload: { event?: string; delta?: string; step?: InferenceStep; content?: string; message_id?: number; created_at?: string; inference_steps?: InferenceStep[]; message?: string };
         try {
           payload = JSON.parse(jsonStr);
         } catch {
           continue;
         }
         const eventType = payload.event;
-        if (eventType === "chunk") {
+        if (eventType === "inference_step" && payload.step) {
+          assistantMsg.inference_steps = assistantMsg.inference_steps || [];
+          assistantMsg.inference_steps.push(payload.step as InferenceStep);
+          assistantMsg.inferenceCollapsed = false;
+          await nextTick();
+          messagesEl.value?.scrollTo({ top: messagesEl.value.scrollHeight, behavior: "smooth" });
+        } else if (eventType === "chunk") {
           streamingContent.value += payload.delta ?? "";
           await nextTick();
           messagesEl.value?.scrollTo({ top: messagesEl.value.scrollHeight, behavior: "smooth" });
@@ -261,11 +280,10 @@ async function send() {
   const sessionId = chatStore.currentSessionId;
   if (!text || !sessionId || sending.value) return;
 
-  // 发送前折叠并清空所有历史推理内容，只保留最新一轮的推理
+  // 发送前折叠历史推理块（保留内容），推理保留在各自的框里
   renderMessages.value.forEach((m) => {
     if (m.inference_steps && m.inference_steps.length) {
       m.inferenceCollapsed = true;
-      m.inference_steps = [];
     }
   });
 
@@ -282,43 +300,26 @@ async function send() {
   inputText.value = "";
   sending.value = true;
   try {
-    const hasFiles = selectedFiles.value.length > 0;
-    if (hasFiles) {
-      const res = await sessionsApi.sendMessageWithFiles(sessionId, text, selectedFiles.value);
-      selectedFiles.value = [];
-      const steps = res.inference_steps || [];
-      const assistantMsg: UiMessage = {
-        id: res.message_id,
-        session_id: sessionId,
-        role: "assistant",
-        content: res.content,
-        created_at: res.created_at,
-        inference_steps: steps,
-        inferenceCollapsed: true,
-      };
-      chatStore.appendMessage(assistantMsg as unknown as MessageOut);
-      await nextTick();
-      messagesEl.value?.scrollTo({ top: messagesEl.value.scrollHeight, behavior: "smooth" });
-    } else {
-      // 无文件时走流式接口
-      const placeholderId = Date.now() + 1;
-      const assistantMsg: UiMessage = {
-        id: placeholderId,
-        session_id: sessionId,
-        role: "assistant",
-        content: "",
-        created_at: new Date().toISOString(),
-        inference_steps: [],
-        inferenceCollapsed: true,
-      };
-      chatStore.appendMessage(assistantMsg as unknown as MessageOut);
-      await nextTick();
-      messagesEl.value?.scrollTo({ top: messagesEl.value.scrollHeight, behavior: "smooth" });
-      await streamAssistantReply(sessionId, text, assistantMsg);
-      await nextTick();
-      messagesEl.value?.scrollTo({ top: messagesEl.value.scrollHeight, behavior: "smooth" });
-      selectedFiles.value = [];
-    }
+    const files = selectedFiles.value.length > 0 ? [...selectedFiles.value] : undefined;
+    selectedFiles.value = [];
+
+    // 统一走流式接口：无文件用 /messages/stream，有文件用 /messages/upload/stream
+    const placeholderId = Date.now() + 1;
+    const assistantMsg: UiMessage = {
+      id: placeholderId,
+      session_id: sessionId,
+      role: "assistant",
+      content: "",
+      created_at: new Date().toISOString(),
+      inference_steps: [],
+      inferenceCollapsed: false,
+    };
+    chatStore.appendMessage(assistantMsg as unknown as MessageOut);
+    await nextTick();
+    messagesEl.value?.scrollTo({ top: messagesEl.value.scrollHeight, behavior: "smooth" });
+    await streamAssistantReply(sessionId, text, assistantMsg, files);
+    await nextTick();
+    messagesEl.value?.scrollTo({ top: messagesEl.value.scrollHeight, behavior: "smooth" });
   } finally {
     sending.value = false;
   }
