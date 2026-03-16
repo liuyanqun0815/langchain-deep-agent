@@ -62,6 +62,12 @@ def _ai_message_final_content(msg: Any) -> str:
     return str(content)
 
 
+def _is_tool_message(msg: Any) -> bool:
+    """判断消息是否为 ToolMessage（工具返回）。"""
+    msg_type = getattr(msg, "type", "") or getattr(msg, "__class__", type(msg)).__name__
+    return msg_type == "tool" or "ToolMessage" in str(type(msg).__name__)
+
+
 def _ai_message_reasoning_content(msg: Any) -> str:
     """从 AIMessage 取出 reasoning_content（DeepSeek-Reasoner 的思考过程）。"""
     kwargs = getattr(msg, "additional_kwargs", None) or {}
@@ -87,7 +93,7 @@ def _message_to_inference_steps(msg: Any) -> list[InferenceStep]:
             name = tc.get("name", "tool") if isinstance(tc, dict) else getattr(tc, "name", "tool")
             args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
             steps.append(InferenceStep(kind="tool_call", name=name, content=str(args)[:300]))
-    if msg_type == "tool" or "ToolMessage" in str(type(msg).__name__):
+    if _is_tool_message(msg):
         name = getattr(msg, "name", "tool")
         content = getattr(msg, "content", None) or ""
         steps.append(InferenceStep(kind="tool_result", name=name, content=str(content)[:500]))
@@ -113,7 +119,7 @@ def _extract_inference_steps(result_messages: list[Any]) -> list[InferenceStep]:
                 steps.append(
                     InferenceStep(kind="tool_call", name=name, content=str(args)[:300])
                 )
-        if msg_type == "tool" or "ToolMessage" in str(type(msg).__name__):
+        if _is_tool_message(msg):
             name = getattr(msg, "name", "tool")
             content = getattr(msg, "content", None) or ""
             steps.append(
@@ -125,8 +131,7 @@ def _extract_inference_steps(result_messages: list[Any]) -> list[InferenceStep]:
 def _log_execute_results(session_id: int, result_messages: list[Any]) -> None:
     """记录 execute 工具的执行日志（成功/失败均输出），便于排查 stdout 未捕获等问题。"""
     for msg in result_messages:
-        msg_type = getattr(msg, "type", "") or getattr(msg, "__class__", type(msg)).__name__
-        if msg_type != "tool" and "ToolMessage" not in str(type(msg).__name__):
+        if not _is_tool_message(msg):
             continue
         if getattr(msg, "name", "") != "execute":
             continue
@@ -274,6 +279,7 @@ def chat_stream(
             messages_for_agent,
         )
         seen_step_keys: set[tuple[str, str | None, str]] = set()
+        last_msg_was_tool = False
         for event in agent.stream(
             {"messages": messages_for_agent},
             config=config,
@@ -290,7 +296,8 @@ def chat_stream(
                     continue
             else:
                 continue
-            logger.info(f"消息内容:{msg}")
+            is_tool_msg = _is_tool_message(msg)
+
             # 1. 流式推送推理步骤（思考、工具调用、工具结果）
             for step in _message_to_inference_steps(msg):
                 key = (step.kind, step.name, (step.content or "")[:80])
@@ -299,26 +306,34 @@ def chat_stream(
                     yield _sse_event({"event": "inference_step", "step": step.model_dump()})
 
             # 2. 流式推送最终答案：仅当 msg 为「纯最终回答」时发 chunk
-            # 有 reasoning_content 或 tool_calls 时，content 属于推理过程，已在 1 中作为 inference_step 推送
-            # 只有既无 reasoning 又无 tool_calls 的 content 才是最终结果，推送到 Agent 主气泡
+            # - 有 reasoning/tool_calls 的 content 已在 1 中作为 inference_step 推送
+            # - 紧接 ToolMessage 的 AIMessage content 多为对工具返回的回显，作为 inference_step 推送，不发 chunk
+            # - 仅当 content 既无 reasoning 又无 tool_calls，且不紧接 ToolMessage 时，才推送到 Agent 主气泡
+            # - delta=增量片段，content=累计完整内容；前端用 delta 追加、content 作兜底
             new_content = _ai_message_final_content(msg)
             has_reasoning = bool(_ai_message_reasoning_content(msg))
             has_tool_calls = bool(getattr(msg, "tool_calls", None))
             if new_content and not has_reasoning and not has_tool_calls:
-                # 兼容两种模式：增量 delta 或累积 full content
-                if new_content.startswith(assistant_content):
-                    delta = new_content[len(assistant_content) :]
+                if last_msg_was_tool:
+                    # 紧接工具返回，视为推理过程：推 inference_step，不发 chunk
+                    step = InferenceStep(kind="thinking", content=new_content[:_MAX_LOG_STEP_CONTENT * 2])
+                    key = (step.kind, step.name, (step.content or "")[:80])
+                    if key not in seen_step_keys:
+                        seen_step_keys.add(key)
+                        yield _sse_event({"event": "inference_step", "step": step.model_dump()})
                 else:
-                    delta = new_content
-                assistant_content = new_content
-                if delta:
-                    yield _sse_event(
-                    {
-                        "event": "chunk",
-                        "delta": delta,
-                        "content": assistant_content,
-                    }
-                )
+                    # 大模型最终结果：推送 chunk
+                    if new_content.startswith(assistant_content):
+                        delta = new_content[len(assistant_content) :]
+                    else:
+                        delta = new_content
+                    assistant_content = new_content
+                    if delta:
+                        yield _sse_event(
+                            {"event": "chunk", "delta": delta, "content": assistant_content}
+                        )
+
+            last_msg_was_tool = is_tool_msg
 
         # 流结束后获取最终状态，用于 inference_steps
         try:
