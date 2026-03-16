@@ -77,9 +77,12 @@ def _message_to_inference_steps(msg: Any) -> list[InferenceStep]:
     msg_type = getattr(msg, "type", "") or getattr(msg, "__class__", type(msg)).__name__
     if msg_type == "ai" or "AIMessage" in str(type(msg).__name__):
         reasoning = _ai_message_reasoning_content(msg)
+        tool_calls = getattr(msg, "tool_calls", None) or []
+        content = _ai_message_final_content(msg)
         if reasoning:
             steps.append(InferenceStep(kind="thinking", content=reasoning[:_MAX_LOG_STEP_CONTENT * 2]))
-        tool_calls = getattr(msg, "tool_calls", None) or []
+        if content and (reasoning or tool_calls):
+            steps.append(InferenceStep(kind="thinking", content=content[:_MAX_LOG_STEP_CONTENT * 2]))
         for tc in tool_calls:
             name = tc.get("name", "tool") if isinstance(tc, dict) else getattr(tc, "name", "tool")
             args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
@@ -287,7 +290,7 @@ def chat_stream(
                     continue
             else:
                 continue
-
+            logger.info(f"消息内容:{msg}")
             # 1. 流式推送推理步骤（思考、工具调用、工具结果）
             for step in _message_to_inference_steps(msg):
                 key = (step.kind, step.name, (step.content or "")[:80])
@@ -295,9 +298,13 @@ def chat_stream(
                     seen_step_keys.add(key)
                     yield _sse_event({"event": "inference_step", "step": step.model_dump()})
 
-            # 2. 流式推送最终答案内容（仅在 AIMessage 有 content 且非 reasoning 时）
+            # 2. 流式推送最终答案：仅当 msg 为「纯最终回答」时发 chunk
+            # 有 reasoning_content 或 tool_calls 时，content 属于推理过程，已在 1 中作为 inference_step 推送
+            # 只有既无 reasoning 又无 tool_calls 的 content 才是最终结果，推送到 Agent 主气泡
             new_content = _ai_message_final_content(msg)
-            if new_content and not _ai_message_reasoning_content(msg):
+            has_reasoning = bool(_ai_message_reasoning_content(msg))
+            has_tool_calls = bool(getattr(msg, "tool_calls", None))
+            if new_content and not has_reasoning and not has_tool_calls:
                 # 兼容两种模式：增量 delta 或累积 full content
                 if new_content.startswith(assistant_content):
                     delta = new_content[len(assistant_content) :]

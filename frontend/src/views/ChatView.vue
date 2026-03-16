@@ -50,23 +50,15 @@
             :class="['message-row', m.role]"
           >
             <div class="message-stack" :class="{ right: m.role === 'user' }">
-              <div class="message-bubble">
-                <div class="message-meta">
-                  <span class="message-role">{{ m.role === "user" ? "你" : "Agent" }}</span>
-                  <span class="message-time">{{ formatTime(m.created_at) }}</span>
-                </div>
-                <div class="message-content">
-                  {{ m.id === streamingMessageId ? streamingContent : m.content }}
-                  <span v-if="m.role === 'assistant' && m.id === streamingMessageId" class="streaming-cursor">|</span>
-                </div>
-              </div>
-              <!-- 每条 Agent 消息后面自己的推理块（放在输出下面） -->
+              <!-- 上方框：推理过程，先流式展示，结束后折叠 -->
               <div
                 v-if="m.role === 'assistant' && m.inference_steps && m.inference_steps.length"
-                class="inference-inline"
+                class="inference-box-top"
               >
                 <div class="inference-inline-header" @click="toggleInference(m)">
-                  <span class="inference-label">推理过程</span>
+                  <span class="inference-label">
+                    {{ m.inferenceDurationSec != null ? `推理中(用时${m.inferenceDurationSec}秒)` : "推理中" }}<span class="inference-caret">^</span>
+                  </span>
                   <span class="inference-toggle">{{ m.inferenceCollapsed ? "展开" : "收起" }}</span>
                 </div>
                 <div v-show="!m.inferenceCollapsed" class="inference-inline-content">
@@ -78,6 +70,24 @@
                     <span class="inference-kind">{{ kindLabel(step.kind) }}</span>
                     <span v-if="step.name" class="inference-name">{{ step.name }}</span>
                     <pre class="inference-content">{{ step.content }}</pre>
+                  </div>
+                </div>
+              </div>
+              <!-- 下方框：最终执行结果，流式展示 -->
+              <div class="message-bubble result-box">
+                <div class="message-meta">
+                  <span class="message-role">{{ m.role === "user" ? "你" : "Agent" }}</span>
+                  <span class="message-time">{{ formatTime(m.created_at) }}</span>
+                </div>
+                <div class="message-content">
+                  <template v-if="m.role === 'assistant' && (m.inference_steps?.length || m.content || streamingContent)">
+                    <div v-if="(m.id === streamingMessageId ? streamingContent : m.content)" class="result-label">执行结果</div>
+                  </template>
+                  <div class="message-body">
+                    <template v-if="m.id === streamingMessageId">
+                      <template v-if="streamingContent">{{ streamingContent }}<span v-if="m.role === 'assistant'" class="streaming-cursor">|</span></template>
+                    </template>
+                    <template v-else>{{ m.content }}</template>
                   </div>
                 </div>
               </div>
@@ -148,6 +158,8 @@ export interface InferenceStep {
 type UiMessage = MessageOut & {
   inference_steps?: InferenceStep[];
   inferenceCollapsed?: boolean;
+  /** 推理耗时（秒），从首条消息到 end 的时长，用于展示「推理中(用时X秒)」 */
+  inferenceDurationSec?: number;
 };
 
 const chatStore = useChatStore();
@@ -201,6 +213,8 @@ async function streamAssistantReply(
   streamingController.value = controller;
   streamingMessageId.value = assistantMsg.id;
   streamingContent.value = "";
+  /** 首个消息接收时间，用于计算「从收到首个消息到最后一个消息」的耗时 */
+  let firstEventTime: number | null = null;
   try {
     const url = files?.length
       ? `/api/sessions/${sessionId}/messages/upload/stream`
@@ -245,18 +259,26 @@ async function streamAssistantReply(
           continue;
         }
         const eventType = payload.event;
+        if (firstEventTime == null) firstEventTime = Date.now();
         if (eventType === "inference_step" && payload.step) {
+          streamingContent.value = "";
           assistantMsg.inference_steps = assistantMsg.inference_steps || [];
           assistantMsg.inference_steps.push(payload.step as InferenceStep);
           assistantMsg.inferenceCollapsed = false;
           await nextTick();
           messagesEl.value?.scrollTo({ top: messagesEl.value.scrollHeight, behavior: "smooth" });
         } else if (eventType === "chunk") {
+          // 推理结束，首个结果 chunk 到达：折叠推理块，开始在主气泡流式展示正式结果（耗时在 end 时统一计算）
+          assistantMsg.inferenceCollapsed = true;
           streamingContent.value += payload.delta ?? "";
           await nextTick();
           messagesEl.value?.scrollTo({ top: messagesEl.value.scrollHeight, behavior: "smooth" });
         } else if (eventType === "end") {
-          assistantMsg.content = payload.content ?? assistantMsg.content;
+          // 从收到首个消息到最后一个消息(end)的耗时
+          assistantMsg.inferenceDurationSec = Math.round((Date.now() - (firstEventTime ?? Date.now())) / 1000);
+          const fromStream = streamingContent.value;
+          const fromPayload = payload.content ?? "";
+          assistantMsg.content = fromStream && fromStream.length >= (fromPayload?.length || 0) ? fromStream : (fromPayload || assistantMsg.content);
           assistantMsg.id = payload.message_id ?? assistantMsg.id;
           assistantMsg.created_at = payload.created_at ?? assistantMsg.created_at;
           assistantMsg.inference_steps = (payload.inference_steps || []) as InferenceStep[];
@@ -567,6 +589,11 @@ onMounted(() => {
   line-height: 1.55;
 }
 
+.inference-placeholder {
+  color: var(--text-tertiary, #999);
+  font-style: italic;
+}
+
 .streaming-cursor {
   display: inline-block;
   margin-left: 1px;
@@ -704,6 +731,40 @@ onMounted(() => {
   border: 1px solid var(--border);
   background: var(--bg-elevated);
   overflow: hidden;
+}
+
+/* 上方推理框：先流式展示，结束后折叠 */
+.inference-box-top {
+  width: 100%;
+  margin-bottom: 8px;
+  font-size: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+
+.inference-caret {
+  margin-left: 4px;
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+/* 下方执行结果框 */
+.result-box .result-label {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.result-box .message-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .inference-inline-header {
