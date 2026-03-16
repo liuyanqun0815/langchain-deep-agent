@@ -210,11 +210,15 @@ async function streamAssistantReply(
   files?: File[]
 ) {
   const controller = new AbortController();
-  streamingController.value = controller;
+    streamingController.value = controller;
   streamingMessageId.value = assistantMsg.id;
   streamingContent.value = "";
   /** 首个消息接收时间，用于计算「从收到首个消息到最后一个消息」的耗时 */
   let firstEventTime: number | null = null;
+  /** 上一条 chunk 是否为工具内容，用于 tool_content true->false 时清空 */
+  let lastToolContent: boolean | undefined = undefined;
+  /** tool_content 状态：从 true 切到 false 时清空主气泡内容 */
+  let lastToolContent: boolean | undefined = undefined;
   try {
     const url = files?.length
       ? `/api/sessions/${sessionId}/messages/upload/stream`
@@ -239,6 +243,7 @@ async function streamAssistantReply(
     const reader = resp.body.getReader();
     const decoder = new TextDecoder("utf-8");
     let buffer = "";
+    let last_tool_content: boolean | undefined = undefined;
 
     while (true) {
       const { value, done } = await reader.read();
@@ -252,7 +257,17 @@ async function streamAssistantReply(
         if (!dataLine) continue;
         const jsonStr = dataLine.slice(5).trim();
         if (!jsonStr) continue;
-        let payload: { event?: string; delta?: string; step?: InferenceStep; content?: string; message_id?: number; created_at?: string; inference_steps?: InferenceStep[]; message?: string };
+        let payload: {
+          event?: string;
+          delta?: string;
+          step?: InferenceStep;
+          content?: string;
+          tool_content?: boolean;
+          message_id?: number;
+          created_at?: string;
+          inference_steps?: InferenceStep[];
+          message?: string;
+        };
         try {
           payload = JSON.parse(jsonStr);
         } catch {
@@ -268,8 +283,12 @@ async function streamAssistantReply(
           await nextTick();
           messagesEl.value?.scrollTo({ top: messagesEl.value.scrollHeight, behavior: "smooth" });
         } else if (eventType === "chunk") {
-          // 推理结束，首个结果 chunk 到达：折叠推理块，开始在主气泡流式展示正式结果（耗时在 end 时统一计算）
           assistantMsg.inferenceCollapsed = true;
+          const is_tool_content = payload.tool_content === true;
+          if (last_tool_content === true && is_tool_content === false) {
+            streamingContent.value = "";
+          }
+          last_tool_content = is_tool_content;
           streamingContent.value += payload.delta ?? "";
           await nextTick();
           messagesEl.value?.scrollTo({ top: messagesEl.value.scrollHeight, behavior: "smooth" });

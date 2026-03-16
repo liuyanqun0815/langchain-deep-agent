@@ -94,7 +94,6 @@ def _message_to_inference_steps(msg: Any) -> list[InferenceStep]:
             args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
             steps.append(InferenceStep(kind="tool_call", name=name, content=str(args)[:300]))
     if _is_tool_message(msg):
-        logger.info("tool_message: %s", msg)
         name = getattr(msg, "name", "tool")
         content = getattr(msg, "content", None) or ""
         steps.append(InferenceStep(kind="tool_result", name=name, content=str(content)[:500]))
@@ -307,33 +306,28 @@ def chat_stream(
                     seen_step_keys.add(key)
                     yield _sse_event({"event": "inference_step", "step": step.model_dump()})
 
-            # 2. 流式推送最终答案：仅当 msg 为「纯最终回答」时发 chunk
+            # 2. 流式推送最终答案：有 content 且无 reasoning/tool_calls 时统一发 chunk
             # - 有 reasoning/tool_calls 的 content 已在 1 中作为 inference_step 推送
-            # - 紧接 ToolMessage 的 AIMessage content 多为对工具返回的回显，作为 inference_step 推送，不发 chunk
-            # - 仅当 content 既无 reasoning 又无 tool_calls，且不紧接 ToolMessage 时，才推送到 Agent 主气泡
-            # - delta=增量片段，content=累计完整内容；前端用 delta 追加、content 作兜底
+            # - tool_content=true 表示紧接工具返回的内容（多为回显），前端可在 tool_content true->false 时清空
+            # - tool_content=false 表示大模型最终结果
             new_content = _ai_message_final_content(msg)
             has_reasoning = bool(_ai_message_reasoning_content(msg))
             has_tool_calls = bool(getattr(msg, "tool_calls", None))
             if new_content and not has_reasoning and not has_tool_calls:
-                if last_msg_was_tool:
-                    # 紧接工具返回，视为推理过程：推 inference_step，不发 chunk
-                    step = InferenceStep(kind="thinking", content=new_content[:_MAX_LOG_STEP_CONTENT * 2])
-                    key = (step.kind, step.name, (step.content or "")[:80])
-                    if key not in seen_step_keys:
-                        seen_step_keys.add(key)
-                        yield _sse_event({"event": "inference_step", "step": step.model_dump()})
+                if new_content.startswith(assistant_content):
+                    delta = new_content[len(assistant_content) :]
                 else:
-                    # 大模型最终结果：推送 chunk
-                    if new_content.startswith(assistant_content):
-                        delta = new_content[len(assistant_content) :]
-                    else:
-                        delta = new_content
-                    assistant_content = new_content
-                    if delta:
-                        yield _sse_event(
-                            {"event": "chunk", "delta": delta, "content": assistant_content}
-                        )
+                    delta = new_content
+                assistant_content = new_content
+                if delta:
+                    yield _sse_event(
+                        {
+                            "event": "chunk",
+                            "delta": delta,
+                            "content": assistant_content,
+                            "tool_content": last_msg_was_tool,
+                        }
+                    )
 
             last_msg_was_tool = is_tool_msg
 
