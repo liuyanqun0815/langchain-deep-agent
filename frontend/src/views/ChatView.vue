@@ -215,10 +215,6 @@ async function streamAssistantReply(
   streamingContent.value = "";
   /** 首个消息接收时间，用于计算「从收到首个消息到最后一个消息」的耗时 */
   let firstEventTime: number | null = null;
-  /** 上一条 chunk 是否为工具内容，用于 tool_content true->false 时清空 */
-  let lastToolContent: boolean | undefined = undefined;
-  /** tool_content 状态：从 true 切到 false 时清空主气泡内容 */
-  let lastToolContent: boolean | undefined = undefined;
   try {
     const url = files?.length
       ? `/api/sessions/${sessionId}/messages/upload/stream`
