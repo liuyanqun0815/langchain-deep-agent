@@ -94,6 +94,7 @@ def _message_to_inference_steps(msg: Any) -> list[InferenceStep]:
             args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
             steps.append(InferenceStep(kind="tool_call", name=name, content=str(args)[:300]))
     if _is_tool_message(msg):
+        logger.info("tool_message: %s", msg)
         name = getattr(msg, "name", "tool")
         content = getattr(msg, "content", None) or ""
         steps.append(InferenceStep(kind="tool_result", name=name, content=str(content)[:500]))
