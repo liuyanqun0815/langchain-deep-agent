@@ -287,6 +287,7 @@ def chat_stream(
             subgraphs=True,
         ):
             # v1: (namespace, (msg, metadata))；无 subgraphs 时可能为 (msg, metadata)
+            logger.info("agent.stream event | session_id=%s | event=%s", session_id, event)
             if isinstance(event, (list, tuple)):
                 if len(event) == 2 and hasattr(event[0], "content"):
                     msg, _metadata = event[0], event[1]
@@ -297,7 +298,7 @@ def chat_stream(
             else:
                 continue
             is_tool_msg = _is_tool_message(msg)
-            logger.info(f"消息内容:{msg},是否为工具消息:{is_tool_msg}")
+            # logger.info(f"消息内容:{msg},是否为工具消息:{is_tool_msg}")
             # 1. 流式推送推理步骤（思考、工具调用、工具结果）
             for step in _message_to_inference_steps(msg):
                 key = (step.kind, step.name, (step.content or "")[:80])
