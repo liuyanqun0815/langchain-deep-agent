@@ -297,7 +297,7 @@ def chat_stream(
             else:
                 continue
             is_tool_msg = _is_tool_message(msg)
-
+            logger.info(f"消息内容:{msg},是否为工具消息:{is_tool_msg}")
             # 1. 流式推送推理步骤（思考、工具调用、工具结果）
             for step in _message_to_inference_steps(msg):
                 key = (step.kind, step.name, (step.content or "")[:80])
