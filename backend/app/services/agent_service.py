@@ -325,7 +325,7 @@ def chat_stream(
                             "event": "chunk",
                             "delta": delta,
                             "content": assistant_content,
-                            "tool_content": last_msg_was_tool,
+                            "tool_content": is_tool_msg,
                         }
                     )
 
