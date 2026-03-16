@@ -49,9 +49,11 @@ def _make_backend(runtime: Any) -> CompositeBackend:
     # 注意：仅用于本地开发，生产环境需使用沙箱（BaseSandbox）或 HITL 审批
     backend_root = Path(__file__).resolve().parent.parent.parent
     logger.info("LocalShellBackend enabled: %s", backend_root)
+    # PYTHONUNBUFFERED=1：避免 Python 脚本 stdout 缓冲，确保 execute 能捕获 print 输出（尤其 Windows）
     local_shell = LocalShellBackend(
         root_dir=backend_root,
         inherit_env=True,
+        env={"PYTHONUNBUFFERED": "1"},
     )
     return CompositeBackend(
         default=local_shell,

@@ -99,6 +99,21 @@ def _extract_inference_steps(result_messages: list[Any]) -> list[InferenceStep]:
     return steps
 
 
+def _log_execute_results(session_id: int, result_messages: list[Any]) -> None:
+    """记录 execute 工具的执行日志（成功/失败均输出），便于排查 stdout 未捕获等问题。"""
+    for msg in result_messages:
+        msg_type = getattr(msg, "type", "") or getattr(msg, "__class__", type(msg)).__name__
+        if msg_type != "tool" and "ToolMessage" not in str(type(msg).__name__):
+            continue
+        if getattr(msg, "name", "") != "execute":
+            continue
+        content_str = str(getattr(msg, "content", None) or "").strip()
+        succeeded = "exit code: 0" in content_str.lower() or "succeeded" in content_str.lower()
+        status = "成功" if succeeded else "失败/异常"
+        preview = (content_str[:800] + "\n...(截断)") if len(content_str) > 800 else (content_str or "<无输出>")
+        logger.info("execute 工具执行%s | session_id=%s | output_len=%d\n---\n%s\n---", status, session_id, len(content_str), preview)
+
+
 def _format_inference_steps_for_log(steps: list[InferenceStep]) -> str:
     """将推理步骤格式化为可读日志（截断内容，避免过长）。"""
     lines: list[str] = []
@@ -158,6 +173,7 @@ def chat(db: Session, session_id: int, user_message: str) -> tuple[str, int, dat
         session_id,
         len(result_messages),
     )
+    _log_execute_results(session_id, result_messages)
     inference_steps = _extract_inference_steps(result_messages)
     tool_call_count = sum(1 for s in inference_steps if s.kind == "tool_call")
 
@@ -280,6 +296,7 @@ def chat_stream(
 
     elapsed = time.perf_counter() - t0
     result_messages = last_messages
+    _log_execute_results(session_id, result_messages)
     inference_steps = _extract_inference_steps(result_messages)
     tool_call_count = sum(1 for s in inference_steps if s.kind == "tool_call")
 
