@@ -1,0 +1,11 @@
+# 技能目录由 docker-compose volume 挂载，不打包进镜像
+skills/
+
+# 开发/缓存
+__pycache__/
+*.py[cod]
+.env
+.env.*
+.git
+.gitignore
+*.md
