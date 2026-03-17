@@ -31,7 +31,7 @@ npm run dev
 
 浏览器访问前端地址（如 `http://localhost:5173`），前端会把 `/api` 代理到后端 `http://127.0.0.1:8000`。
 
-![img.png](img.png)
+![img.png](docs/img.png)
 ![img_1.png](docs/img_1.png)
 ![img_2.png](docs/img_2.png)
 ## 环境变量（可选）
