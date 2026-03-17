@@ -12,7 +12,7 @@ def _default_skills_root() -> Path:
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(env_file="../.env", env_file_encoding="utf-8", extra="ignore")
 
     database_url: str = "sqlite:///./data/agent_app_1.db"
     default_model: str = "deepseek-chat"

@@ -1,0 +1,32 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: deep-agent-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend_data:/app/data
+      - ./backend/skills:/app/skills
+    environment:
+      - DATABASE_URL=sqlite:///./data/agent_app.db
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - LANGCHAIN_DEBUG=${LANGCHAIN_DEBUG:-0}
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY:-}
+      - APP_DEBUG=${APP_DEBUG:-0}
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: deep-agent-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  backend_data:

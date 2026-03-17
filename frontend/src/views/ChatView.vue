@@ -225,9 +225,10 @@ async function streamAssistantReply(
   /** 首个消息接收时间，用于计算「从收到首个消息到最后一个消息」的耗时 */
   let firstEventTime: number | null = null;
   try {
+    const base = (await import("../api")).apiBaseUrl;
     const url = files?.length
-      ? `/api/sessions/${sessionId}/messages/upload/stream`
-      : `/api/sessions/${sessionId}/messages/stream`;
+      ? `${base}/sessions/${sessionId}/messages/upload/stream`
+      : `${base}/sessions/${sessionId}/messages/stream`;
     const body = files?.length
       ? (() => {
           const form = new FormData();

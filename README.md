@@ -10,6 +10,34 @@ Vue 3 + FastAPI + SQLite + DeepAgents 的聊天 Agent 应用。
 
 ## 快速开始
 
+### 方式一：Docker Compose 部署（推荐）
+
+```bash
+# 在项目根目录执行
+docker-compose up -d
+
+# 查看日志
+docker-compose logs -f
+```
+
+- 前端：<http://localhost>
+- 后端 API：<http://localhost:8000>
+
+**环境变量（可选）**：在项目根目录创建 `.env` 文件，Docker Compose 解析时会自动读取并注入容器，文件不存在不会报错。需要 API 密钥时，复制 `.env.example` 为 `.env` 并填入：
+
+```env
+# DeepAgent Demo 环境变量（可选，复制 .env.example 为 .env 并填入真实值）
+DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxx
+LANGCHAIN_DEBUG=0
+LANGSMITH_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# APP_DEBUG=1
+# DATABASE_URL=sqlite:///./data/agent_app.db
+```
+
+停止服务：`docker-compose down`
+
+### 方式二：本地开发
+
 **后端**
 
 ```bash

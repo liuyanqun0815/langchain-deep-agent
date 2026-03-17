@@ -1,7 +1,18 @@
 import axios from "axios";
 
+/** Docker 部署（端口 80）无代理，需直连后端 8000 */
+function getApiBase(): string {
+  if (import.meta.env.DEV) return "/api";
+  const port = window.location.port;
+  if (port === "80" || port === "")
+    return `${window.location.protocol}//${window.location.hostname}:8000/api`;
+  return "/api";
+}
+
+export const apiBaseUrl = getApiBase();
+
 const api = axios.create({
-  baseURL: "/api",
+  baseURL: apiBaseUrl,
   timeout: 200000, // 200s
   headers: { "Content-Type": "application/json" },
 });
