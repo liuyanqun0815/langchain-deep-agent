@@ -2,9 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 系统依赖（可选，pdf 等技能可能需要）
+# 系统依赖：build-essential（pdf 等）、git（从 GitHub 添加技能）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
